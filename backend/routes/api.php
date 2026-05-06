@@ -13,3 +13,12 @@ Route::apiResource('customers', CustomerController::class);
 Route::apiResource('invoices', InvoiceController::class);
 Route::apiResource('payments', PaymentController::class);
 Route::apiResource('mikrotik', MikrotikController::class);
+
+Route::prefix('mikrotik/{mikrotikDevice}')->group(function () {
+    Route::get('test', [MikrotikController::class, 'testConnection']);
+    Route::get('online-users', [MikrotikController::class, 'onlineUsers']);
+    Route::get('system-info', [MikrotikController::class, 'systemInfo']);
+    Route::post('enable-user', [MikrotikController::class, 'enableUser']);
+    Route::post('disable-user', [MikrotikController::class, 'disableUser']);
+    Route::post('add-customer', [MikrotikController::class, 'addCustomerToMikrotik']);
+});

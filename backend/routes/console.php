@@ -1,8 +1,8 @@
 <?php
+use Illuminate\Support\Facades\Schedule;
 
-use Illuminate\Foundation\Inspiring;
-use Illuminate\Support\Facades\Artisan;
+// Daily midnight: suspend expired customers
+Schedule::command('customers:suspend-expired')->dailyAt('00:00');
 
-Artisan::command('inspire', function () {
-    $this->comment(Inspiring::quote());
-})->purpose('Display an inspiring quote');
+// Daily 9 AM: send expiry reminders
+Schedule::command('customers:expiry-reminders')->dailyAt('09:00');
