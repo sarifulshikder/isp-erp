@@ -27,18 +27,48 @@ class SmsService
             return false;
         }
 
+        // Format phone number with country code
+        $phone = $this->formatPhone($phone);
+
         try {
             return match($this->gateway) {
                 'ssl' => $this->sendViaSsl($phone, $message),
                 'bulksmsbd' => $this->sendViaBulkSmsBd($phone, $message),
                 'alphanet' => $this->sendViaAlphaNet($phone, $message),
-                'custom' => $this->sendViaCustom($phone, $message),
+                'custom' => $this->sendViaSmsFlow($phone, $message),
                 default => false,
             };
         } catch (\Exception $e) {
             Log::error("SMS Error: " . $e->getMessage());
             return false;
         }
+    }
+
+    private function formatPhone(string $phone): string
+    {
+        // Remove spaces and dashes
+        $phone = preg_replace('/[\s\-]/', '', $phone);
+        // Add Bangladesh country code if not present
+        if (str_starts_with($phone, '0')) {
+            $phone = '+88' . $phone;
+        } elseif (!str_starts_with($phone, '+')) {
+            $phone = '+88' . $phone;
+        }
+        return $phone;
+    }
+
+    private function sendViaSmsFlow(string $phone, string $message): bool
+    {
+        $response = Http::withHeaders([
+            'X-API-KEY' => $this->apiKey,
+            'Content-Type' => 'application/json',
+        ])->post('https://smsflow.app/api/v1/send', [
+            'to' => $phone,
+            'message' => $message,
+        ]);
+
+        Log::info('SMS Flow Response: ' . $response->body());
+        return $response->successful();
     }
 
     private function sendViaSsl(string $phone, string $message): bool
@@ -77,28 +107,13 @@ class SmsService
         return $response->successful();
     }
 
-    private function sendViaCustom(string $phone, string $message): bool
-    {
-        $url = Setting::get('sms_api_url', '');
-        if (!$url) return false;
-        $response = Http::get($url, [
-            'api_key' => $this->apiKey,
-            'phone' => $phone,
-            'message' => $message,
-            'sender_id' => $this->senderId,
-        ]);
-        return $response->successful();
-    }
-
     public function sendFromTemplate(string $templateKey, string $phone, array $data): bool
     {
         $template = Setting::get($templateKey, '');
         if (!$template) return false;
-
         foreach ($data as $key => $value) {
             $template = str_replace('{' . $key . '}', $value, $template);
         }
-
         return $this->send($phone, $template);
     }
 

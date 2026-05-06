@@ -22,3 +22,5 @@ Route::prefix('mikrotik/{mikrotikDevice}')->group(function () {
     Route::post('disable-user', [MikrotikController::class, 'disableUser']);
     Route::post('add-customer', [MikrotikController::class, 'addCustomerToMikrotik']);
 });
+
+Route::get('invoices/{invoice}/pdf', [App\Http\Controllers\InvoicePdfController::class, 'download']);
