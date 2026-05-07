@@ -30,6 +30,19 @@ return [
     */
 
     'connections' => [
+        'radius' => [
+            'driver' => 'mysql',
+            'host' => 'mysql',
+            'port' => '3306',
+            'database' => 'radius',
+            'username' => 'isp_user',
+            'password' => 'ISP@Secure#2026',
+            'charset' => 'utf8mb4',
+            'collation' => 'utf8mb4_unicode_ci',
+            'prefix' => '',
+            'strict' => true,
+            'engine' => null,
+        ],
 
         'sqlite' => [
             'driver' => 'sqlite',
