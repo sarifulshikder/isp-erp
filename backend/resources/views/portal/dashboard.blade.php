@@ -78,7 +78,7 @@
         <div class="bg-white rounded-xl shadow p-6 mb-6">
             <div class="flex justify-between items-center mb-4">
                 <h2 class="font-bold text-gray-800">🧾 সাম্প্রতিক ইনভয়েস</h2>
-                <a href="{{ route('portal.invoices.index') }}" class="text-blue-600 text-sm hover:underline">সব দেখুন →</a>
+                <a href="{{ route('portal.invoices') }}" class="text-blue-600 text-sm hover:underline">সব দেখুন →</a>
             </div>
             @forelse($recentInvoices as $invoice)
                 <div class="flex justify-between items-center py-3 border-b last:border-0">

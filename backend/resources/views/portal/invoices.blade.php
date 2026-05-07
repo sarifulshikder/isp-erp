@@ -41,7 +41,7 @@
                                 {{ $invoice->status === 'paid' ? 'পরিশোধিত' : 'বাকি' }}
                             </span>
                         </div>
-                        <a href="{{ route('portal.invoices.show', $invoice->id) }}"
+                        <a href="{{ route('portal.invoice.show', $invoice->id) }}"
                             class="text-blue-600 text-sm hover:underline">বিস্তারিত</a>
                     </div>
                 </div>

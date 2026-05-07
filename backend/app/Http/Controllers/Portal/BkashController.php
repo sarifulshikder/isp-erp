@@ -56,14 +56,14 @@ class BkashController extends Controller
         Log::info('bKash callback', ['status' => $status, 'paymentID' => $paymentId]);
 
         if ($status !== 'success' || !$paymentId) {
-            return redirect()->route('portal.invoices.show', $invoiceId)
+            return redirect()->route('portal.invoice.show', $invoiceId)
                              ->with('error', 'Payment বাতিল অথবা ব্যর্থ হয়েছে।');
         }
 
         $result = $this->bkash->executePayment($paymentId);
 
         if (!$result['success']) {
-            return redirect()->route('portal.invoices.show', $invoiceId)
+            return redirect()->route('portal.invoice.show', $invoiceId)
                              ->with('error', 'Payment execute ব্যর্থ: ' . $result['message']);
         }
 
@@ -71,7 +71,7 @@ class BkashController extends Controller
         $invoice = Invoice::findOrFail($invoiceId);
         $invoice->update([
             'status'  => 'paid',
-            'paid_at' => now(),
+            'paid_date' => now()->toDateString(),
         ]);
 
         // Payment record
@@ -80,7 +80,8 @@ class BkashController extends Controller
             'invoice_id'  => $invoice->id,
             'amount'      => $result['amount'],
             'method'      => 'bkash',
-            'trx_id'      => $result['trxID'],
+            'transaction_id' => $result['trxID'],
+            'paid_at'      => now(),
             'note'        => 'bKash: ' . ($result['customerMsisdn'] ?? ''),
         ]);
 
@@ -111,7 +112,7 @@ class BkashController extends Controller
 
         session()->forget('bkash_payment_id');
 
-        return redirect()->route('portal.invoices.show', $invoiceId)
+        return redirect()->route('portal.invoice.show', $invoiceId)
                          ->with('success', "✅ Payment সফল! TrxID: {$result['trxID']}");
     }
 }

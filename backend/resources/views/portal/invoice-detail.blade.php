@@ -9,7 +9,7 @@
 <body class="bg-gray-100 min-h-screen">
     <nav class="bg-blue-700 text-white px-6 py-4 flex justify-between items-center shadow">
         <div class="font-bold text-lg">🌐 Customer Portal</div>
-        <a href="{{ route('portal.invoices.index') }}" class="text-sm hover:underline">← ইনভয়েস তালিকা</a>
+        <a href="{{ route('portal.invoices') }}" class="text-sm hover:underline">← ইনভয়েস তালিকা</a>
     </nav>
 
     <div class="max-w-2xl mx-auto px-4 py-8">
