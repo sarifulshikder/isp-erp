@@ -43,27 +43,13 @@ services:
       - DB_HOST=mysql
       - DB_USER=${DB_USER}
       - DB_PASSWORD=${DB_PASS}
+      - MAIL_DRIVER=log
+      - MAIL_PORT=1025
+      - MAIL_ENV_FROM_ADDR=admin@localhost
+      - MAIL_ENV_FROM_NAME=SnipeIT
       - DB_NAME=librenms
     networks: [isp_net]
 
-  snipeit:
-    image: snipe/snipe-it:latest
-    container_name: isp_snipeit
-    restart: always
-    ports:
-      - "8081:80"
-    environment:
-      - APP_URL=http://10.5.31.34:8081
-      - APP_KEY=${SNIPEIT_APP_KEY}
-      - DB_CONNECTION=mysql
-      - DB_HOST=mysql
-      - DB_PORT=3306
-      - DB_DATABASE=${DB_NAME}
-      - DB_USERNAME=${DB_USER}
-      - DB_PASSWORD=${DB_PASS}
-    depends_on:
-      - mysql
-    networks: [isp_net]
 
   n8n:
     image: n8nio/n8n:latest
@@ -85,7 +71,9 @@ services:
     networks: [isp_net]
 
   laravel:
-    image: webdevops/php-nginx:8.4-alpine
+    build:
+      context: .
+      dockerfile: Dockerfile.laravel
     container_name: isp_laravel
     restart: always
     ports:
@@ -99,6 +87,10 @@ services:
       - DB_DATABASE=${DB_NAME}
       - DB_USERNAME=${DB_USER}
       - DB_PASSWORD=${DB_PASS}
+      - MAIL_DRIVER=log
+      - MAIL_PORT=1025
+      - MAIL_ENV_FROM_ADDR=admin@localhost
+      - MAIL_ENV_FROM_NAME=SnipeIT
       - REDIS_HOST=redis
       - REDIS_PASSWORD=${REDIS_PASS}
     depends_on:

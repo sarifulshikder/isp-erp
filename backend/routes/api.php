@@ -24,3 +24,9 @@ Route::prefix('mikrotik/{mikrotikDevice}')->group(function () {
 });
 
 Route::get('invoices/{invoice}/pdf', [App\Http\Controllers\InvoicePdfController::class, 'download']);
+
+// Network Map
+Route::get('/network-map', [App\Http\Controllers\Api\NetworkMapController::class, 'index']);
+
+// Fiber Routes
+Route::apiResource('fiber-routes', App\Http\Controllers\Api\FiberRouteController::class);

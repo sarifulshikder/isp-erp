@@ -1,0 +1,2 @@
+FROM webdevops/php-nginx:8.4-alpine
+RUN apk add --no-cache net-snmp-tools

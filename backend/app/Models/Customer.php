@@ -1,5 +1,4 @@
 <?php
-
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -14,7 +13,7 @@ class Customer extends Authenticatable
         'name', 'phone', 'email', 'address',
         'username', 'password', 'package_id',
         'connection_date', 'expire_date', 'status',
-        'mikrotik_profile', 'balance',
+        'mikrotik_profile', 'balance', 'zone_id', 'latitude', 'longitude',
     ];
 
     protected $hidden = ['password', 'remember_token'];
@@ -37,5 +36,15 @@ class Customer extends Authenticatable
     public function payments()
     {
         return $this->hasMany(Payment::class);
+    }
+
+    public function inventories()
+    {
+        return $this->hasMany(Inventory::class, 'assigned_customer_id');
+    }
+
+    public function zone()
+    {
+        return $this->belongsTo(Zone::class);
     }
 }
