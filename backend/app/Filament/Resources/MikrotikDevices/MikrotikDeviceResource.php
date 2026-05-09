@@ -18,7 +18,27 @@ class MikrotikDeviceResource extends Resource
 {
     protected static ?string $model = MikrotikDevice::class;
 
-    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;
+
+
+    public static function getNavigationIcon(): string|\BackedEnum|null
+    {
+        return Heroicon::OutlinedServerStack;
+    }
+
+    public static function getNavigationGroup(): ?string
+    {
+        return 'Network';
+    }
+
+    public static function getNavigationSort(): ?int
+    {
+        return 1;
+    }
+
+    public static function getNavigationLabel(): string
+    {
+        return 'MikroTik Devices';
+    }
 
     public static function form(Schema $schema): Schema
     {

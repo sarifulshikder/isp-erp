@@ -32,6 +32,11 @@ class Settings extends Page implements HasForms
         return 'Settings';
     }
 
+    public static function getNavigationIcon(): string
+    {
+        return 'heroicon-o-cog-6-tooth';
+    }
+
     public function mount(): void
     {
         $settings = Setting::all()->pluck('value', 'key')->toArray();

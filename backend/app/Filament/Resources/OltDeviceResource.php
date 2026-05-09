@@ -69,11 +69,28 @@ class OltDeviceResource extends Resource
                     ->icon('heroicon-o-arrow-path')
                     ->color('info')
                     ->action(function (OltDevice $record) {
-                        $vsol = new \App\Services\VsolService($record);
-                        $count = $vsol->pollAndSave($record);
+                        
+                        // আপনার দেওয়া নতুন লজিক এখানে রিপ্লেস করা হয়েছে
+                        $brand = strtolower(trim($record->brand));
+
+                        if ($brand === 'vsol') {
+                            $service = new \App\Services\VsolService($record);
+                        } elseif ($brand === 'bdcom') {
+                            $service = new \App\Services\BdcomService($record);
+                        } else {
+                            \Filament\Notifications\Notification::make()
+                                ->title("Unsupported brand: {$record->brand}")
+                                ->danger()
+                                ->send();
+                            return;
+                        }
+
+                        $count = $service->pollAndSave($record);
+
                         \Filament\Notifications\Notification::make()
                             ->title("Polled {$count} ONUs")
-                            ->success()->send();
+                            ->success()
+                            ->send();
                     }),
             ])
             ->bulkActions([

@@ -6,7 +6,7 @@ class OltDevice extends Model
     protected $fillable = [
         'name', 'brand', 'ip', 'port',
         'username', 'password', 'status', 'last_polled_at',
-        'latitude', 'longitude',
+        'latitude', 'longitude', 'snmp_port', 'snmp_community',
     ];
     protected $casts = [
         'last_polled_at' => 'datetime',

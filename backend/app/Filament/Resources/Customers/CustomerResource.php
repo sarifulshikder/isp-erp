@@ -18,7 +18,27 @@ class CustomerResource extends Resource
 {
     protected static ?string $model = Customer::class;
 
-    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;
+
+
+    public static function getNavigationIcon(): string|\BackedEnum|null
+    {
+        return Heroicon::OutlinedUsers;
+    }
+
+    public static function getNavigationGroup(): ?string
+    {
+        return 'ISP Management';
+    }
+
+    public static function getNavigationSort(): ?int
+    {
+        return 1;
+    }
+
+    public static function getNavigationLabel(): string
+    {
+        return 'Customers';
+    }
 
     public static function form(Schema $schema): Schema
     {

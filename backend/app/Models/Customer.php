@@ -13,7 +13,7 @@ class Customer extends Authenticatable
         'name', 'phone', 'email', 'address',
         'username', 'password', 'package_id',
         'connection_date', 'expire_date', 'status',
-        'mikrotik_profile', 'balance', 'zone_id', 'latitude', 'longitude',
+        'mikrotik_profile', 'balance', 'zone_id', 'latitude', 'longitude', 'connection_type', 'mac_address',
     ];
 
     protected $hidden = ['password', 'remember_token'];

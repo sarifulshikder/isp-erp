@@ -9,38 +9,81 @@ use Filament\Schemas\Schema;
 use App\Models\Package;
 use App\Models\Inventory;
 use App\Models\Zone;
+
 class CustomerForm
 {
     public static function configure(Schema $schema): Schema
     {
         return $schema->components([
             Section::make('Basic Information')->schema([
-                TextInput::make("name")->required(),
-                TextInput::make("phone")->tel()->required(),
-                TextInput::make("email")->label("Email address")->email(),
-                Textarea::make("address")->columnSpanFull(),
-                Select::make("zone_id")
-                    ->label("Zone / এলাকা")
+                TextInput::make('name')->required(),
+                TextInput::make('phone')->tel()->required(),
+                TextInput::make('email')->label('Email address')->email(),
+                Textarea::make('address')->columnSpanFull(),
+                Select::make('zone_id')
+                    ->label('Zone / এলাকা')
                     ->options(Zone::where('is_active', true)->pluck('name', 'id'))
                     ->searchable()
                     ->nullable(),
             ]),
+
             Section::make('Connection Details')->schema([
-                TextInput::make("username")->required(),
-                TextInput::make("password")->password()->required(),
-                Select::make("package_id")
-                    ->label("Package")
-                    ->options(Package::where("status", "active")->pluck("name", "id"))
+                Select::make('connection_type')
+                    ->label('Connection Type')
+                    ->options([
+                        'pppoe'     => '🔌 PPPoE',
+                        'hotspot'   => '📶 Hotspot (MAC-based)',
+                        'static_ip' => '🖥️ Static IP',
+                    ])
+                    ->default('pppoe')
+                    ->required()
+                    ->live(),
+
+                TextInput::make('username')
+                    ->required()
+                    ->label(fn($get) => match($get('connection_type')) {
+                        'hotspot'   => 'MAC Address (Username)',
+                        'static_ip' => 'IP Address (Username)',
+                        default     => 'PPPoE Username',
+                    }),
+
+                TextInput::make('password')
+                    ->password()
+                    ->nullable()
+                    ->label('Password')
+                    ->helperText('Hotspot/Static IP এর জন্য খালি রাখতে পারেন। Edit এ খালি রাখলে পুরনো password থাকবে।')
+                    ->dehydrateStateUsing(fn($state, $record) =>
+                        filled($state) ? $state : ($record?->password ?? '')
+                    ),
+
+                TextInput::make('mac_address')
+                    ->label('MAC Address')
+                    ->nullable()
+                    ->placeholder('AA:BB:CC:DD:EE:FF')
+                    ->visible(fn($get) => $get('connection_type') === 'hotspot')
+                    ->helperText('Hotspot customer এর TV/Device MAC address'),
+
+                Select::make('package_id')
+                    ->label('Package')
+                    ->options(Package::where('status', 'active')->pluck('name', 'id'))
                     ->required()
                     ->searchable(),
-                DatePicker::make("connection_date")->required(),
-                DatePicker::make("expire_date")->required(),
-                Select::make("status")
-                    ->options(["active" => "Active", "inactive" => "Inactive", "suspended" => "Suspended"])
-                    ->default("active")->required(),
-                TextInput::make("mikrotik_profile"),
-                TextInput::make("balance")->required()->numeric()->default(0),
+
+                DatePicker::make('connection_date')->required(),
+                DatePicker::make('expire_date')->required(),
+
+                Select::make('status')
+                    ->options([
+                        'active'    => 'Active',
+                        'inactive'  => 'Inactive',
+                        'suspended' => 'Suspended',
+                    ])
+                    ->default('active')->required(),
+
+                TextInput::make('mikrotik_profile'),
+                TextInput::make('balance')->required()->numeric()->default(0),
             ]),
+
             Section::make('Device Assignment')->schema([
                 Select::make('assigned_inventory_id')
                     ->label('ONU / Device Assign করুন')
@@ -48,7 +91,7 @@ class CustomerForm
                         Inventory::where('status', 'available')
                             ->with('category')
                             ->get()
-                            ->mapWithKeys(fn ($item) => [
+                            ->mapWithKeys(fn($item) => [
                                 $item->id => ($item->category->name ?? '') . ' — ' . $item->name .
                                     ($item->serial_number ? ' (' . $item->serial_number . ')' : '')
                             ])
@@ -58,6 +101,7 @@ class CustomerForm
                     ->helperText('শুধুমাত্র Available devices দেখাচ্ছে')
                     ->dehydrated(false),
             ]),
+
             Section::make('Location (Map)')->schema([
                 TextInput::make('latitude')
                     ->numeric()

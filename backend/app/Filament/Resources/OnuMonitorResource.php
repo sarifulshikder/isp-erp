@@ -2,11 +2,14 @@
 namespace App\Filament\Resources;
 use App\Filament\Resources\OnuMonitorResource\Pages;
 use App\Models\OnuMonitor;
+use Filament\Actions\Action;
 use Filament\Actions\ViewAction;
 use Filament\Resources\Resource;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
+use Filament\Notifications\Notification;
+use Illuminate\Support\Facades\Artisan;
 
 class OnuMonitorResource extends Resource
 {
@@ -48,18 +51,39 @@ class OnuMonitorResource extends Resource
                 SelectFilter::make('signal_status')
                     ->label('Signal')
                     ->options([
-                        'normal' => 'Normal', 'warning' => 'Warning',
-                        'critical' => 'Critical', 'unknown' => 'Unknown',
+                        'normal'   => 'Normal',
+                        'warning'  => 'Warning',
+                        'critical' => 'Critical',
+                        'unknown'  => 'Unknown',
                     ]),
                 SelectFilter::make('pon_port')
                     ->label('PON Port')
                     ->options(fn() => OnuMonitor::distinct()->pluck('pon_port', 'pon_port')->toArray()),
             ])
             ->defaultSort('signal_status', 'desc')
-            ->actions([
+            ->recordActions([
                 ViewAction::make(),
             ])
-            ->bulkActions([]);
+            ->toolbarActions([
+                Action::make('refresh')
+                    ->label('🔄 Refresh Now')
+                    ->color('info')
+                    ->icon('heroicon-o-arrow-path')
+                    ->action(function () {
+                        try {
+                            Artisan::call('olt:poll');
+                            Notification::make()
+                                ->title('✅ ONU data refresh হয়েছে!')
+                                ->success()
+                                ->send();
+                        } catch (\Exception $e) {
+                            Notification::make()
+                                ->title('❌ Refresh failed: ' . $e->getMessage())
+                                ->danger()
+                                ->send();
+                        }
+                    }),
+            ]);
     }
 
     public static function getPages(): array

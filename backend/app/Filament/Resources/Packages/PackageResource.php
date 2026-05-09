@@ -18,7 +18,27 @@ class PackageResource extends Resource
 {
     protected static ?string $model = Package::class;
 
-    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;
+
+
+    public static function getNavigationIcon(): string|\BackedEnum|null
+    {
+        return Heroicon::OutlinedSquare3Stack3d;
+    }
+
+    public static function getNavigationGroup(): ?string
+    {
+        return 'ISP Management';
+    }
+
+    public static function getNavigationSort(): ?int
+    {
+        return 2;
+    }
+
+    public static function getNavigationLabel(): string
+    {
+        return 'Packages';
+    }
 
     public static function form(Schema $schema): Schema
     {

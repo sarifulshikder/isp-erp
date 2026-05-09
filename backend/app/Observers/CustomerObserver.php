@@ -12,31 +12,41 @@ class CustomerObserver
 {
     public function created(Customer $customer): void
     {
-        // MikroTik PPPoE user add
+        // MikroTik user add
         try {
             $mikrotik = new MikrotikService();
-            $devices = MikrotikDevice::where('status', 'active')->get();
+            $devices  = MikrotikDevice::where('status', 'active')->get();
             foreach ($devices as $device) {
-                if ($mikrotik->connect($device)) {
+                if (!$mikrotik->connect($device)) continue;
+                if ($customer->connection_type === 'hotspot') {
+                    $mikrotik->addHotspotUser(
+                        $customer->username,
+                        $customer->password ?? '',
+                        $customer->mikrotik_profile ?? 'default'
+                    );
+                } elseif ($customer->connection_type === 'pppoe') {
                     $mikrotik->addPPPoEUser(
                         $customer->username,
-                        $customer->password,
-                        'default'
+                        $customer->password ?? '',
+                        $customer->mikrotik_profile ?? 'default'
                     );
                 }
+                // static_ip → manual setup, no auto add
             }
         } catch (\Exception $e) {
             Log::error('CustomerObserver created MikroTik error: ' . $e->getMessage());
         }
 
-        // FreeRADIUS user add
-        $this->syncRadiusUser($customer->username, $customer->password);
+        // FreeRADIUS — শুধু PPPoE এর জন্য
+        if ($customer->connection_type === 'pppoe' && $customer->password) {
+            $this->syncRadiusUser($customer->username, $customer->password);
+        }
     }
 
     public function updated(Customer $customer): void
     {
-        // Password পরিবর্তন হলে radius আপডেট
-        if ($customer->isDirty('password')) {
+        // Password পরিবর্তন হলে radius আপডেট (PPPoE only)
+        if ($customer->isDirty('password') && $customer->connection_type === 'pppoe') {
             $this->syncRadiusUser($customer->username, $customer->password);
         }
 
@@ -45,20 +55,26 @@ class CustomerObserver
 
         try {
             $mikrotik = new MikrotikService();
-            $devices = MikrotikDevice::where('status', 'active')->get();
-
+            $devices  = MikrotikDevice::where('status', 'active')->get();
             foreach ($devices as $device) {
                 if (!$mikrotik->connect($device)) continue;
 
                 if ($customer->status === 'active') {
-                    $mikrotik->enablePPPoEUser($customer->username);
+                    if ($customer->connection_type === 'hotspot') {
+                        $mikrotik->enableHotspotUser($customer->username);
+                    } else {
+                        $mikrotik->enablePPPoEUser($customer->username);
+                    }
                     $sms = new SmsService();
                     $sms->accountActivated($customer->phone, ['name' => $customer->name]);
 
                 } elseif (in_array($customer->status, ['inactive', 'suspended'])) {
-                    $mikrotik->disablePPPoEUser($customer->username);
-
-                    // n8n webhook — Zammad ticket create
+                    if ($customer->connection_type === 'hotspot') {
+                        $mikrotik->disableHotspotUser($customer->username);
+                    } else {
+                        $mikrotik->disablePPPoEUser($customer->username);
+                    }
+                    // n8n webhook — Zammad ticket
                     try {
                         Http::timeout(5)->post('http://isp_n8n:5678/webhook/88e6acce-63f2-4cf2-8fd4-624ce711952a', [
                             'customer_name' => $customer->name,
@@ -81,9 +97,12 @@ class CustomerObserver
         // MikroTik থেকে remove
         try {
             $mikrotik = new MikrotikService();
-            $devices = MikrotikDevice::where('status', 'active')->get();
+            $devices  = MikrotikDevice::where('status', 'active')->get();
             foreach ($devices as $device) {
-                if ($mikrotik->connect($device)) {
+                if (!$mikrotik->connect($device)) continue;
+                if ($customer->connection_type === 'hotspot') {
+                    $mikrotik->removeHotspotUser($customer->username);
+                } else {
                     $mikrotik->removePPPoEUser($customer->username);
                 }
             }
@@ -91,14 +110,16 @@ class CustomerObserver
             Log::error('CustomerObserver deleted MikroTik error: ' . $e->getMessage());
         }
 
-        // Radius থেকে remove
-        try {
-            DB::connection('radius')->table('radcheck')
-                ->where('username', $customer->username)->delete();
-            DB::connection('radius')->table('radusergroup')
-                ->where('username', $customer->username)->delete();
-        } catch (\Exception $e) {
-            Log::warning('Radius delete error: ' . $e->getMessage());
+        // Radius থেকে remove (PPPoE only)
+        if ($customer->connection_type === 'pppoe') {
+            try {
+                DB::connection('radius')->table('radcheck')
+                    ->where('username', $customer->username)->delete();
+                DB::connection('radius')->table('radusergroup')
+                    ->where('username', $customer->username)->delete();
+            } catch (\Exception $e) {
+                Log::warning('Radius delete error: ' . $e->getMessage());
+            }
         }
     }
 

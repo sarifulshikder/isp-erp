@@ -160,7 +160,7 @@ class BdcomService
             $fwVer    = $descriptions[$idx] ?? '';
             // Web থেকে customer name নাও
             $webData  = $webInfo[$onuId] ?? null;
-            $desc     = $webData['description'] ?? trim("{$vendor} {$fwVer}") ?: null;
+            $desc     = $webData["description"] ?? null; if (!$desc) { $desc = trim("{$vendor} {$fwVer}") ?: null; }
 
             OnuMonitor::updateOrCreate(
                 ['olt_id' => $olt->id, 'onu_id' => $onuId],
