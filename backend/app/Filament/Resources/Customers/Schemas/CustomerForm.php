@@ -9,7 +9,7 @@ use Filament\Schemas\Schema;
 use App\Models\Package;
 use App\Models\Inventory;
 use App\Models\Zone;
-
+use App\Models\MikrotikDevice;
 class CustomerForm
 {
     public static function configure(Schema $schema): Schema
@@ -26,7 +26,6 @@ class CustomerForm
                     ->searchable()
                     ->nullable(),
             ]),
-
             Section::make('Connection Details')->schema([
                 Select::make('connection_type')
                     ->label('Connection Type')
@@ -38,7 +37,6 @@ class CustomerForm
                     ->default('pppoe')
                     ->required()
                     ->live(),
-
                 TextInput::make('username')
                     ->required()
                     ->label(fn($get) => match($get('connection_type')) {
@@ -46,7 +44,6 @@ class CustomerForm
                         'static_ip' => 'IP Address (Username)',
                         default     => 'PPPoE Username',
                     }),
-
                 TextInput::make('password')
                     ->password()
                     ->nullable()
@@ -55,23 +52,19 @@ class CustomerForm
                     ->dehydrateStateUsing(fn($state, $record) =>
                         filled($state) ? $state : ($record?->password ?? '')
                     ),
-
                 TextInput::make('mac_address')
                     ->label('MAC Address')
                     ->nullable()
                     ->placeholder('AA:BB:CC:DD:EE:FF')
                     ->visible(fn($get) => $get('connection_type') === 'hotspot')
                     ->helperText('Hotspot customer এর TV/Device MAC address'),
-
                 Select::make('package_id')
                     ->label('Package')
                     ->options(Package::where('status', 'active')->pluck('name', 'id'))
                     ->required()
                     ->searchable(),
-
                 DatePicker::make('connection_date')->required(),
                 DatePicker::make('expire_date')->required(),
-
                 Select::make('status')
                     ->options([
                         'active'    => 'Active',
@@ -79,11 +72,34 @@ class CustomerForm
                         'suspended' => 'Suspended',
                     ])
                     ->default('active')->required(),
-
                 TextInput::make('mikrotik_profile'),
                 TextInput::make('balance')->required()->numeric()->default(0),
             ]),
-
+            Section::make('MikroTik Routing')->schema([
+                Select::make('mikrotik_mode')
+                    ->label('MikroTik Connection Mode')
+                    ->options([
+                        'freeradius_only' => '🔒 FreeRADIUS Only — কোনো router এ add হবে না',
+                        'specific'        => '🎯 Specific Router — নির্দিষ্ট একটা router',
+                        'all'             => '📡 All Routers — সব active router এ add হবে',
+                    ])
+                    ->default('freeradius_only')
+                    ->required()
+                    ->live()
+                    ->helperText(fn($state) => match($state) {
+                        'freeradius_only' => 'যেকোনো router থেকে RADIUS দিয়ে authenticate হবে।',
+                        'specific'        => 'PPPoE user শুধু নির্বাচিত router এ add হবে।',
+                        'all'             => 'সব active router এ add হবে। নতুন router যোগ করলে auto push হবে।',
+                        default           => '',
+                    }),
+                Select::make('mikrotik_device_id')
+                    ->label('Router বাছুন')
+                    ->options(MikrotikDevice::where('status', 'active')->pluck('name', 'id'))
+                    ->visible(fn($get) => $get('mikrotik_mode') === 'specific')
+                    ->required(fn($get) => $get('mikrotik_mode') === 'specific')
+                    ->searchable()
+                    ->placeholder('একটি MikroTik router বাছুন'),
+            ]),
             Section::make('Device Assignment')->schema([
                 Select::make('assigned_inventory_id')
                     ->label('ONU / Device Assign করুন')
@@ -101,7 +117,6 @@ class CustomerForm
                     ->helperText('শুধুমাত্র Available devices দেখাচ্ছে')
                     ->dehydrated(false),
             ]),
-
             Section::make('Location (Map)')->schema([
                 TextInput::make('latitude')
                     ->numeric()

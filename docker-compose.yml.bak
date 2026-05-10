@@ -1,5 +1,7 @@
 services:
-
+  # ─────────────────────────────────────────
+  # CORE SERVICES (ISP ERP)
+  # ─────────────────────────────────────────
   mysql:
     image: mysql:8.0
     container_name: isp_mysql
@@ -41,27 +43,13 @@ services:
       - DB_HOST=mysql
       - DB_USER=${DB_USER}
       - DB_PASSWORD=${DB_PASS}
+      - MAIL_DRIVER=log
+      - MAIL_PORT=1025
+      - MAIL_ENV_FROM_ADDR=admin@localhost
+      - MAIL_ENV_FROM_NAME=SnipeIT
       - DB_NAME=librenms
     networks: [isp_net]
 
-  snipeit:
-    image: snipe/snipe-it:latest
-    container_name: isp_snipeit
-    restart: always
-    ports:
-      - "8081:80"
-    environment:
-      - APP_URL=http://10.5.31.34:8081
-      - APP_KEY=${SNIPEIT_APP_KEY}
-      - DB_CONNECTION=mysql
-      - DB_HOST=mysql
-      - DB_PORT=3306
-      - DB_DATABASE=${DB_NAME}
-      - DB_USERNAME=${DB_USER}
-      - DB_PASSWORD=${DB_PASS}
-    depends_on:
-      - mysql
-    networks: [isp_net]
 
   n8n:
     image: n8nio/n8n:latest
@@ -73,12 +61,19 @@ services:
       - N8N_BASIC_AUTH_ACTIVE=true
       - N8N_BASIC_AUTH_USER=${N8N_BASIC_AUTH_USER}
       - N8N_BASIC_AUTH_PASSWORD=${N8N_BASIC_AUTH_PASSWORD}
+      - N8N_SECURE_COOKIE=false
+      - N8N_HOST=10.5.31.34
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - WEBHOOK_URL=http://10.5.31.34:5678/
     volumes:
       - n8n_data:/home/node/.n8n
     networks: [isp_net]
 
   laravel:
-    image: webdevops/php-nginx:8.4-alpine
+    build:
+      context: .
+      dockerfile: Dockerfile.laravel
     container_name: isp_laravel
     restart: always
     ports:
@@ -92,6 +87,10 @@ services:
       - DB_DATABASE=${DB_NAME}
       - DB_USERNAME=${DB_USER}
       - DB_PASSWORD=${DB_PASS}
+      - MAIL_DRIVER=log
+      - MAIL_PORT=1025
+      - MAIL_ENV_FROM_ADDR=admin@localhost
+      - MAIL_ENV_FROM_NAME=SnipeIT
       - REDIS_HOST=redis
       - REDIS_PASSWORD=${REDIS_PASS}
     depends_on:
@@ -99,9 +98,150 @@ services:
       - redis
     networks: [isp_net]
 
+  # ─────────────────────────────────────────
+  # ZAMMAD TICKETING SYSTEM
+  # ─────────────────────────────────────────
+  zammad-postgresql:
+    image: postgres:15-alpine
+    container_name: zammad_postgresql
+    restart: always
+    environment:
+      POSTGRES_USER: zammad
+      POSTGRES_PASSWORD: zammad_pass
+      POSTGRES_DB: zammad_production
+    volumes:
+      - zammad_postgresql_data:/var/lib/postgresql/data
+    networks: [isp_net]
+
+  zammad-elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.4
+    container_name: zammad_elasticsearch
+    restart: always
+    environment:
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - xpack.security.enabled=false
+    volumes:
+      - zammad_elasticsearch_data:/usr/share/elasticsearch/data
+    networks: [isp_net]
+
+  # Zammad Init Service (ক্রিটিক্যাল: এটি ডাটাবেজ রেডি করবে)
+  zammad-init:
+    image: ghcr.io/zammad/zammad:latest
+    container_name: zammad_init
+    command: ["zammad-init"]
+    environment:
+      RAILS_ENV: production
+      POSTGRESQL_HOST: zammad-postgresql
+      POSTGRESQL_PORT: 5432
+      POSTGRESQL_USER: zammad
+      POSTGRESQL_PASS: zammad_pass
+      POSTGRESQL_DB: zammad_production
+      ELASTICSEARCH_HOST: zammad-elasticsearch
+      ELASTICSEARCH_PORT: 9200
+      REDIS_URL: redis://:${REDIS_PASS}@redis:6379
+      ZAMMAD_SECRET_KEY_BASE: zammad_secret_key_base_change_this_32chars
+    volumes:
+      - zammad_data:/opt/zammad
+    depends_on:
+      - zammad-postgresql
+      - zammad-elasticsearch
+      - redis
+    networks: [isp_net]
+
+  zammad-railsserver:
+    image: ghcr.io/zammad/zammad:latest
+    container_name: zammad_railsserver
+    restart: always
+    command: ["zammad-railsserver"]
+    environment:
+      RAILS_ENV: production
+      POSTGRESQL_HOST: zammad-postgresql
+      POSTGRESQL_PORT: 5432
+      POSTGRESQL_USER: zammad
+      POSTGRESQL_PASS: zammad_pass
+      POSTGRESQL_DB: zammad_production
+      ELASTICSEARCH_HOST: zammad-elasticsearch
+      ELASTICSEARCH_PORT: 9200
+      REDIS_URL: redis://:${REDIS_PASS}@redis:6379
+      ZAMMAD_SECRET_KEY_BASE: zammad_secret_key_base_change_this_32chars
+    volumes:
+      - zammad_data:/opt/zammad
+    depends_on:
+      - zammad-init
+    networks: [isp_net]
+
+  zammad-websocket:
+    image: ghcr.io/zammad/zammad:latest
+    container_name: zammad_websocket
+    restart: always
+    command: ["zammad-websocket"]
+    environment:
+      RAILS_ENV: production
+      POSTGRESQL_HOST: zammad-postgresql
+      POSTGRESQL_PORT: 5432
+      POSTGRESQL_USER: zammad
+      POSTGRESQL_PASS: zammad_pass
+      POSTGRESQL_DB: zammad_production
+      REDIS_URL: redis://:${REDIS_PASS}@redis:6379
+      ZAMMAD_SECRET_KEY_BASE: zammad_secret_key_base_change_this_32chars
+    volumes:
+      - zammad_data:/opt/zammad
+    depends_on:
+      - zammad-railsserver
+    networks: [isp_net]
+
+  zammad-scheduler:
+    image: ghcr.io/zammad/zammad:latest
+    container_name: zammad_scheduler
+    restart: always
+    command: ["zammad-scheduler"]
+    environment:
+      RAILS_ENV: production
+      POSTGRESQL_HOST: zammad-postgresql
+      POSTGRESQL_PORT: 5432
+      POSTGRESQL_USER: zammad
+      POSTGRESQL_PASS: zammad_pass
+      POSTGRESQL_DB: zammad_production
+      REDIS_URL: redis://:${REDIS_PASS}@redis:6379
+      ZAMMAD_SECRET_KEY_BASE: zammad_secret_key_base_change_this_32chars
+    volumes:
+      - zammad_data:/opt/zammad
+    depends_on:
+      - zammad-railsserver
+    networks: [isp_net]
+
+  zammad-nginx:
+    image: ghcr.io/zammad/zammad:latest
+    container_name: zammad_nginx
+    restart: always
+    command: ["zammad-nginx"]
+    ports:
+      - "8090:8080"
+    environment:
+      RAILS_ENV: production
+      POSTGRESQL_HOST: zammad-postgresql
+      POSTGRESQL_PORT: 5432
+      POSTGRESQL_USER: zammad
+      POSTGRESQL_PASS: zammad_pass
+      POSTGRESQL_DB: zammad_production
+      ELASTICSEARCH_HOST: zammad-elasticsearch
+      ELASTICSEARCH_PORT: 9200
+      REDIS_URL: redis://:${REDIS_PASS}@redis:6379
+      ZAMMAD_SECRET_KEY_BASE: zammad_secret_key_base_change_this_32chars
+    volumes:
+      - zammad_data:/opt/zammad
+    depends_on:
+      - zammad-railsserver
+      - zammad-websocket
+    networks: [isp_net]
+
 volumes:
   mysql_data:
   n8n_data:
+  zammad_data:
+  zammad_postgresql_data:
+  zammad_elasticsearch_data:
 
 networks:
   isp_net:

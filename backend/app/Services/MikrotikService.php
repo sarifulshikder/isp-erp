@@ -1,6 +1,8 @@
 <?php
 namespace App\Services;
 use App\Models\MikrotikDevice;
+use App\Models\Customer;
+use App\Models\MikrotikImportReview;
 use RouterOS\Client;
 use RouterOS\Query;
 class MikrotikService
@@ -184,7 +186,6 @@ class MikrotikService
             return false;
         }
     }
-    // ── Hotspot User Methods ──────────────────────────────────────────────────
     public function addHotspotUser(string $username, string $password = '', string $profile = 'default'): bool
     {
         try {
@@ -242,5 +243,152 @@ class MikrotikService
         } catch (\Exception $e) {
             return false;
         }
+    }
+    // ─────────────────────────────────────────
+    public function getClient(): Client
+    {
+        return $this->client;
+    }
+
+    // MULTI-ROUTER SYNC (mode-aware)
+    // ─────────────────────────────────────────
+    public function syncAddCustomer(Customer $customer): void
+    {
+        $devices = $customer->resolveTargetMikrotikDevices();
+        foreach ($devices as $device) {
+            if (!$this->connect($device)) continue;
+            $profile = $customer->mikrotik_profile ?? 'default';
+            if ($customer->connection_type === 'hotspot') {
+                $this->addHotspotUser($customer->username, $customer->password ?? '', $profile);
+            } else {
+                $this->addPPPoEUser($customer->username, $customer->password ?? '', $profile);
+            }
+        }
+    }
+    public function syncRemoveCustomerFromAll(Customer $customer): void
+    {
+        $devices = MikrotikDevice::where('status', 'active')->get();
+        foreach ($devices as $device) {
+            if (!$this->connect($device)) continue;
+            if ($customer->connection_type === 'hotspot') {
+                $this->removeHotspotUser($customer->username);
+            } else {
+                $this->removePPPoEUser($customer->username);
+            }
+        }
+    }
+    public function syncEnableCustomer(Customer $customer): void
+    {
+        $devices = $customer->resolveTargetMikrotikDevices();
+        foreach ($devices as $device) {
+            if (!$this->connect($device)) continue;
+            if ($customer->connection_type === 'hotspot') {
+                $this->enableHotspotUser($customer->username);
+            } else {
+                $this->enablePPPoEUser($customer->username);
+            }
+        }
+    }
+    public function syncDisableCustomer(Customer $customer): void
+    {
+        $devices = $customer->resolveTargetMikrotikDevices();
+        foreach ($devices as $device) {
+            if (!$this->connect($device)) continue;
+            if ($customer->connection_type === 'hotspot') {
+                $this->disableHotspotUser($customer->username);
+            } else {
+                $this->disablePPPoEUser($customer->username);
+            }
+        }
+    }
+    // ─────────────────────────────────────────
+    // EXPORT (Software → MikroTik)
+    // ─────────────────────────────────────────
+    public function exportToDevice(MikrotikDevice $device): array
+    {
+        $customers = Customer::where(function ($q) use ($device) {
+            $q->where('mikrotik_mode', 'all')
+              ->orWhere(function ($q2) use ($device) {
+                  $q2->where('mikrotik_mode', 'specific')
+                     ->where('mikrotik_device_id', $device->id);
+              });
+        })->get();
+        if (!$this->connect($device)) {
+            return ['exported' => 0, 'skipped' => 0, 'failed' => 0, 'error' => 'Connection failed'];
+        }
+        // Existing secrets থেকে username list নাও
+        $query = new Query('/ppp/secret/print');
+        $existing = $this->client->query($query)->read();
+        $existingUsernames = array_map(fn($s) => strtolower($s['name'] ?? ''), $existing);
+        $results = ['exported' => 0, 'skipped' => 0, 'failed' => 0];
+        foreach ($customers as $customer) {
+            if (in_array(strtolower($customer->username), $existingUsernames)) {
+                $results['skipped']++;
+                continue;
+            }
+            $profile = $customer->mikrotik_profile ?? 'default';
+            $success = $customer->connection_type === 'hotspot'
+                ? $this->addHotspotUser($customer->username, $customer->password ?? '', $profile)
+                : $this->addPPPoEUser($customer->username, $customer->password ?? '', $profile);
+            $success ? $results['exported']++ : $results['failed']++;
+        }
+        return $results;
+    }
+    // ─────────────────────────────────────────
+    // IMPORT (MikroTik → Review Queue)
+    // ─────────────────────────────────────────
+    public function importFromDevice(MikrotikDevice $device): array
+    {
+        if (!$this->connect($device)) {
+            return ['queued' => 0, 'skipped' => 0, 'error' => 'Connection failed'];
+        }
+        $query = new Query('/ppp/secret/print');
+        $secrets = $this->client->query($query)->read();
+        $existingUsernames = Customer::pluck('username')
+            ->map(fn($u) => strtolower($u))->toArray();
+        $pendingUsernames = MikrotikImportReview::where('mikrotik_device_id', $device->id)
+            ->where('status', 'pending')
+            ->pluck('username')
+            ->map(fn($u) => strtolower($u))->toArray();
+        $results = ['queued' => 0, 'skipped' => 0];
+        foreach ($secrets as $secret) {
+            $username = $secret['name'] ?? null;
+            if (!$username) continue;
+            $lower = strtolower($username);
+            if (in_array($lower, $existingUsernames) || in_array($lower, $pendingUsernames)) {
+                $results['skipped']++;
+                continue;
+            }
+            MikrotikImportReview::create([
+                'mikrotik_device_id' => $device->id,
+                'username'           => $username,
+                'password'           => $secret['password'] ?? null,
+                'profile'            => $secret['profile'] ?? null,
+                'comment'            => $secret['comment'] ?? null,
+                'status'             => 'pending',
+            ]);
+            $results['queued']++;
+        }
+        return $results;
+    }
+    // ─────────────────────────────────────────
+    // AUTO-PUSH — নতুন device এ সব 'all' mode customers
+    // ─────────────────────────────────────────
+    public function pushAllModeCustomersToDevice(MikrotikDevice $device): array
+    {
+        $customers = Customer::where('mikrotik_mode', 'all')
+            ->where('status', 'active')->get();
+        if (!$this->connect($device)) {
+            return ['pushed' => 0, 'failed' => 0, 'error' => 'Connection failed'];
+        }
+        $results = ['pushed' => 0, 'failed' => 0];
+        foreach ($customers as $customer) {
+            $profile = $customer->mikrotik_profile ?? 'default';
+            $success = $customer->connection_type === 'hotspot'
+                ? $this->addHotspotUser($customer->username, $customer->password ?? '', $profile)
+                : $this->addPPPoEUser($customer->username, $customer->password ?? '', $profile);
+            $success ? $results['pushed']++ : $results['failed']++;
+        }
+        return $results;
     }
 }
