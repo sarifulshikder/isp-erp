@@ -16,9 +16,10 @@ class SupportTicketResource extends Resource
 {
     protected static ?string $model = SupportTicket::class;
 
+    public static function getNavigationSort(): ?int { return 4; }
     public static function getNavigationGroup(): ?string
     {
-        return "Support Management";
+        return 'Operations';
     }
 
     public static function getNavigationIcon(): ?string
