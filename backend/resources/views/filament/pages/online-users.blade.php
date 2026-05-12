@@ -104,8 +104,6 @@
                 <th>IP Address</th>
                 <th>MAC</th>
                 <th>Uptime</th>
-                <th>↓ Download</th>
-                <th>↑ Upload</th>
                 <th>Router</th>
             </tr>
         </thead>
@@ -121,8 +119,6 @@
                 <td style="font-family:monospace;color:#10b981;">{{ $user['ip'] }}</td>
                 <td style="font-family:monospace;font-size:11px;color:#9ca3af;">{{ $user['mac'] }}</td>
                 <td style="color:#f59e0b;">{{ $user['uptime'] }}</td>
-                <td style="color:#10b981;font-weight:600;">{{ $user['rx'] }}</td>
-                <td style="color:#f97316;font-weight:600;">{{ $user['tx'] }}</td>
                 <td style="color:#6366f1;font-size:11px;">{{ $user['device_name'] }}</td>
             </tr>
             @endforeach

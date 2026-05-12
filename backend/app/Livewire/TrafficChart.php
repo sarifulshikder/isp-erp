@@ -43,14 +43,15 @@ class TrafficChart extends Component
             $q->equal('interface', $ifName);
             $q->equal('once', '');
             $result = $mikrotik->getClient()->query($q)->read();
-            $rx = isset($result[0]['rx-bits-per-second'])
-                ? round((int)$result[0]['rx-bits-per-second'] / 1000000, 3) : 0;
-            $tx = isset($result[0]['tx-bits-per-second'])
+            // router rx-bits = customer upload, router tx-bits = customer download
+            $download = isset($result[0]['tx-bits-per-second'])
                 ? round((int)$result[0]['tx-bits-per-second'] / 1000000, 3) : 0;
+            $upload = isset($result[0]['rx-bits-per-second'])
+                ? round((int)$result[0]['rx-bits-per-second'] / 1000000, 3) : 0;
             $point = [
-                'time' => now()->format('H:i:s'),
-                'rx'   => max(0, $rx),
-                'tx'   => max(0, $tx),
+                'time'     => now()->format('H:i:s'),
+                'download' => max(0, $download),
+                'upload'   => max(0, $upload),
             ];
             $this->latest = $point;
             $this->chartPoints[] = $point;
