@@ -4,43 +4,36 @@ use App\Models\OltDevice;
 use App\Models\OnuMonitor;
 use App\Models\OnuSignalHistory;
 use Illuminate\Support\Facades\Log;
-
 class BdcomService
 {
     private string $ip;
     private int $snmpPort;
     private string $community;
-
     public function __construct(OltDevice $olt)
     {
         $this->ip        = $olt->ip;
         $this->snmpPort  = $olt->snmp_port ?? 162;
         $this->community = $olt->snmp_community ?? 'public';
     }
-
     private function snmpwalk(string $oid): array
     {
         $cmd = "snmpwalk -v1 -t 10 -c {$this->community} {$this->ip}:{$this->snmpPort} {$oid} 2>/dev/null";
         $output = shell_exec($cmd);
         if (!$output) return [];
-
         $results = [];
         foreach (explode("\n", trim($output)) as $line) {
-            // Match: enterprises.3320.101.10.1.1.26.66 = INTEGER: 3
             if (preg_match('/\.(\d+)\s*=\s*(?:INTEGER|STRING|Hex-STRING|Counter32|Gauge32):\s*(.+)/', $line, $m)) {
-                $results[trim($m[1])] = trim($m[2]);
+                $results[(int)trim($m[1])] = trim($m[2]);
             }
         }
         return $results;
     }
-
     // ONU status: OID .26 (3=online, others=offline)
     public function getOnuStatuses(): array
     {
         return $this->snmpwalk('1.3.6.1.4.1.3320.101.10.1.1.26');
     }
-
-    // ONU RX Power: OID .27 (unit: 0.1 dBm)
+    // ONU RX Power: OID .27
     public function getOnuRxPowers(): array
     {
         $raw = $this->snmpwalk('1.3.6.1.4.1.3320.101.10.1.1.27');
@@ -48,15 +41,14 @@ class BdcomService
         foreach ($raw as $idx => $value) {
             $val = (int) $value;
             if ($val > 0) {
-                // BDCOM: unit is 0.01 dBm, stored as positive integer
-                // 3100 → -31.00 dBm, 1247 → -12.47 dBm
+                // unit: 0.01 dBm stored as positive integer
+                // 1334 → -13.34 dBm
                 $powers[$idx] = round(-($val / 100), 2);
             }
         }
         return $powers;
     }
-
-    // ONU MAC: OID .3
+    // ONU MAC: OID .3 — index → normalized MAC
     public function getOnuMacs(): array
     {
         $raw = $this->snmpwalk('1.3.6.1.4.1.3320.101.10.1.1.3');
@@ -68,14 +60,12 @@ class BdcomService
         }
         return $macs;
     }
-
-    // ONU description: OID .4 (hex firmware version)
+    // ONU description: OID .4
     public function getOnuDescriptions(): array
     {
         $raw = $this->snmpwalk('1.3.6.1.4.1.3320.101.10.1.1.4');
         $descs = [];
         foreach ($raw as $idx => $hex) {
-            // Hex-STRING: 56 31 2E 30 00 00 → "V1.0"
             $bytes = explode(' ', trim($hex));
             $str = '';
             foreach ($bytes as $b) {
@@ -86,23 +76,17 @@ class BdcomService
         }
         return $descs;
     }
-
     // ONU vendor: OID .1
     public function getOnuVendors(): array
     {
         return $this->snmpwalk('1.3.6.1.4.1.3320.101.10.1.1.1');
     }
-
-    // Build ONU ID from index: 66→EPON0/1:1, 67→EPON0/1:2 etc.
-    private function buildOnuId(string $idx): string
+    // MAC normalize helper
+    private function normalizeMac(string $mac): string
     {
-        $i = (int)$idx - 66;
-        $pon = (int)($i / 16) + 1;
-        $onu = ($i % 16) + 1;
-        return "EPON0/{$pon}:{$onu}";
+        return strtolower(str_replace([':', ' ', '.', '-'], '', $mac));
     }
-
-    // PON port from index
+    // PON port from ONU ID
     private function extractPonPort(string $onuId): string
     {
         if (preg_match('/EPON0\/(\d+):/', $onuId, $m)) {
@@ -110,8 +94,7 @@ class BdcomService
         }
         return 'Unknown';
     }
-
-    // Web থেকে ONU info আনো (customer name, MAC, ONU ID)
+    // Web থেকে ONU info: ONU_ID → [description, mac_web]
     public function getOnuInfoFromWeb(OltDevice $olt): array
     {
         $ch = curl_init();
@@ -123,44 +106,49 @@ class BdcomService
         ]);
         $html = curl_exec($ch);
         curl_close($ch);
-
         $info = [];
-        // Parse: intfName[0]="EPON0/1:1"; ... description[0]="Anis";
         preg_match_all('/intfName\[(\d+)\]="([^"]+)"/', $html, $names, PREG_SET_ORDER);
         preg_match_all('/description\[(\d+)\]="([^"]*)"/', $html, $descs, PREG_SET_ORDER);
         preg_match_all('/MACAddress\[(\d+)\]="([^"]+)"/', $html, $macs, PREG_SET_ORDER);
-
         foreach ($names as $m) {
             $i = $m[1];
             $info[$m[2]] = [
                 'description' => $descs[$i][2] ?? null,
-                'mac_web'     => isset($macs[$i][2]) ? strtoupper(str_replace('.', ':', $macs[$i][2])) : null,
+                'mac_web'     => $macs[$i][2] ?? null,
             ];
         }
         return $info;
     }
-
     public function pollAndSave(OltDevice $olt): int
     {
-        $statuses     = $this->getOnuStatuses();
-        $rxPowers     = $this->getOnuRxPowers();
-        $macs         = $this->getOnuMacs();
-        $descriptions = $this->getOnuDescriptions();
-        $vendors      = $this->getOnuVendors();
-        $webInfo      = $this->getOnuInfoFromWeb($olt);
+        // SNMP data — index based
+        $statuses = $this->getOnuStatuses();
+        $rxPowers = $this->getOnuRxPowers();
+        $snmpMacs = $this->getOnuMacs();
+
+        // Web data — ONU_ID based
+        $webInfo  = $this->getOnuInfoFromWeb($olt);
+
+        // SNMP MAC → index lookup (normalized)
+        $macToIdx = [];
+        foreach ($snmpMacs as $idx => $mac) {
+            $macToIdx[$this->normalizeMac($mac)] = $idx;
+        }
 
         $count = 0;
-        foreach ($statuses as $idx => $status) {
-            $rxPower  = $rxPowers[$idx] ?? null;
-            $signal   = $rxPower !== null ? VsolService::getSignalStatus($rxPower) : 'unknown';
-            $mac      = $macs[$idx] ?? null;
-            $onuId    = $this->buildOnuId($idx);
-            $ponPort  = $this->extractPonPort($onuId);
-            $vendor   = $vendors[$idx] ?? '';
-            $fwVer    = $descriptions[$idx] ?? '';
-            // Web থেকে customer name নাও
-            $webData  = $webInfo[$onuId] ?? null;
-            $desc     = $webData["description"] ?? null; if (!$desc) { $desc = trim("{$vendor} {$fwVer}") ?: null; }
+        foreach ($webInfo as $onuId => $webData) {
+            $desc    = $webData['description'] ?? null;
+            $macWeb  = $webData['mac_web'] ?? null;
+            $ponPort = $this->extractPonPort($onuId);
+
+            // Web MAC দিয়ে SNMP index খুঁজি
+            $macNorm = $this->normalizeMac($macWeb ?? '');
+            $idx     = $macToIdx[$macNorm] ?? null;
+
+            $status  = $idx !== null ? ($statuses[$idx] ?? null) : null;
+            $rxPower = $idx !== null ? ($rxPowers[$idx] ?? null) : null;
+            $mac     = $idx !== null ? ($snmpMacs[$idx] ?? $macWeb) : $macWeb;
+            $signal  = $rxPower !== null ? VsolService::getSignalStatus($rxPower) : 'unknown';
 
             OnuMonitor::updateOrCreate(
                 ['olt_id' => $olt->id, 'onu_id' => $onuId],
@@ -168,7 +156,7 @@ class BdcomService
                     'mac'           => $mac,
                     'description'   => $desc,
                     'pon_port'      => $ponPort,
-                    'status'        => (int)$status === 3 ? 'online' : 'offline',
+                    'status'        => $status !== null ? ((int)$status === 3 ? 'online' : 'offline') : 'offline',
                     'rx_power'      => $rxPower,
                     'signal_status' => $signal,
                     'alert_sent'    => false,
@@ -185,10 +173,8 @@ class BdcomService
                     'signal_status' => $signal,
                 ]);
             }
-
             $count++;
         }
-
         $olt->update(['last_polled_at' => now()]);
         return $count;
     }

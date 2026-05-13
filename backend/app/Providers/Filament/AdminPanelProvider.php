@@ -37,6 +37,7 @@ class AdminPanelProvider extends PanelProvider
             ])
             // discoverWidgets বন্ধ — manually শুধু দরকারি widgets
             ->widgets([
+                \App\Filament\Widgets\UplinkStatusWidget::class,
                 \App\Filament\Widgets\StatsOverview::class,
                 \App\Filament\Widgets\RevenueChartWidget::class,
                 \App\Filament\Widgets\CustomerGrowthWidget::class,
